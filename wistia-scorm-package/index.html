@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wistia Sequential Video Playback</title>
+    <script src="https://fast.wistia.com/assets/external/E-v1.js" async></script>
+    <script src="scripts/scorm_api_wrapper.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        #videoContainer {
+            width: 640px;
+            height: 360px;
+            background-color: #000;
+        }
+        #status {
+            margin-top: 20px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div id="videoContainer"></div>
+    <div id="status"></div>
+
+    <script>
+        // Initialize SCORM
+        var API = getAPI();
+        API.LMSInitialize("");
+
+        // Array of Wistia video IDs change them to your Wistia ID's
+        const videoIds = ['xxxxxxx', 'xxxxxxx', 'xxxxxxxx'];
+        let currentVideoIndex = 0;
+        let currentVideo = null;
+
+        function playNextVideo() {
+            if (currentVideoIndex < videoIds.length) {
+                const videoId = videoIds[currentVideoIndex];
+                
+                // Remove previous video (if any)
+                const oldVideo = document.querySelector('.wistia_embed');
+                if (oldVideo) {
+                    oldVideo.remove();
+                }
+
+                // Create new video container
+                const videoContainer = document.createElement('div');
+                videoContainer.className = `wistia_embed wistia_async_${videoId}`;
+                videoContainer.style.width = '100%';
+                videoContainer.style.height = '100%';
+                document.getElementById('videoContainer').appendChild(videoContainer);
+
+                // Update status
+                document.getElementById('status').textContent = `Playing video ${currentVideoIndex + 1} of ${videoIds.length}`;
+
+                // Initialize Wistia player
+                window._wq = window._wq || [];
+                _wq.push({
+                    id: videoId,
+                    options: {
+                        controlsVisibleOnLoad: true,
+                        playbar: false,  // Remove the playbar (timeline)
+                        playButton: true,
+                        smallPlayButton: true,
+                        volumeControl: true,
+                        fullscreenButton: true,
+                        settingsControl: false,
+                        playerColor: "#54bbff"
+                    },
+                    onReady: function(video) {
+                        currentVideo = video;
+
+                        // Disable keyboard shortcuts
+                        video._impl.disableKeyBindings();
+
+                        video.bind('play', function() {
+                            // Ensure video can't be seeked
+                            video.unbindAllInQueue();
+                        });
+
+                        video.play();
+
+                        // Listen for video end event
+                        video.bind('end', function() {
+                            currentVideoIndex++;
+                            // Update SCORM data
+                            API.LMSSetValue("cmi.core.lesson_location", currentVideoIndex.toString());
+                            API.LMSCommit("");
+                            playNextVideo();
+                        });
+                    }
+                });
+            } else {
+                document.getElementById('status').textContent = 'All videos have been played';
+                // Mark course as completed
+                API.LMSSetValue("cmi.core.lesson_status", "completed");
+                API.LMSCommit("");
+                API.LMSFinish("");
+            }
+        }
+
+        // Start playing the first video when the page loads
+        window.onload = function() {
+            // Check if there's a saved position
+            var savedPosition = API.LMSGetValue("cmi.core.lesson_location");
+            if (savedPosition !== "") {
+                currentVideoIndex = parseInt(savedPosition, 10);
+            }
+            playNextVideo();
+        };
+    </script>
+</body>
+</html>
